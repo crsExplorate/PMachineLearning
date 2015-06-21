@@ -1,0 +1,212 @@
+---
+title: "Prediction Assignment Writeup"
+author: "21st June"
+date: "21/06/2015"
+output: html_document
+---
+
+Introduction
+---
+The goal of your project is to predict the manner in which they did the exercise. More information is available from the website here:  <http://groupware.les.inf.puc-rio.br/har>.
+
+
+Data description and download
+---
+
+The first step on the analysis is download the training and test data.
+```{r cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","pml-training.csv",method = "curl")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","pml-testing.csv",method = "curl")
+
+training=read.csv("pml-training.csv")
+testing=read.csv("pml-testing.csv")
+```
+
+Split data to optimize
+---
+
+We split the data in train, testing and validating data. With the train data simple models are going to been built. 
+On testing data the models are evaluate to make a simple comparasion of the better model.
+As advanced aproach a model combining predictors is going to be tested. For that a validation data set is going to be separated.
+
+
+```{r}
+require(caret)
+set.seed(123)
+inTrainAuxIdx <- createDataPartition(y = training$classe, p = .75, list = FALSE)
+inTrainAux <- training[inTrainAuxIdx,]
+inTest <-  training[-inTrainAuxIdx,]
+inTrainIdx <- createDataPartition(y = inTrainAux$classe, p = .75, list = FALSE)
+inTrain <- inTrainAux[inTrainIdx,]
+inValidate <- inTrainAux[-inTrainIdx,]
+
+nrow(inTrain)
+nrow(inTest)
+nrow(inValidate)
+```
+
+Calculate Near Zero Varialnce elements
+---
+Near zero variance elements are removed from data
+```{r}
+nzv<-nearZeroVar(inTrain)
+methodStats<-data.frame(stringsAsFactors = FALSE)
+```
+
+
+
+Model 1: Tree rpart model
+---
+
+A  simple model built with rpart. For tunning cross validation and custom cp are defined. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+rpart.grid<-expand.grid(.cp=seq(0.05,0.3,0.025))
+rpartFit <- train(classe ~ ., data = inTrain[,-nzv], method = "rpart", preProc = c("center", "scale","knnImpute"),trControl=ctrl,tuneGrid = rpart.grid)
+print(rpartFit)
+
+require(rattle)
+fancyRpartPlot(rpartFit$finalModel)
+plot(rpartFit)
+
+rpartClasses <- predict(rpartFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = rpartClasses, inTest$classe)
+info<-cm$overall
+info$Method="Tree rpart"
+methodStats<-rbind(methodStats,info)
+print(cm)
+
+```
+
+
+Model 2: Tree party model
+---
+
+A  simple model built with party. To train repeated cross validation is defined. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+#party.grid <- expand.grid(.maxdepth=c(2:6), .mincriterion=c(0.1, 0.5, 0.90, 0.99))
+partyFit <- train(classe ~ ., data = inTrain[,-nzv], method = "ctree", preProc = c("center", "scale","knnImpute"),trControl=ctrl)
+partyFit
+
+require(rattle)
+plot(partyFit$finalModel)
+plot(partyFit)
+partyClasses <- predict(partyFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = partyClasses, inTest$classe)
+info<-cm$overall
+info$Method="Tree party"
+methodStats<-rbind(methodStats,info)
+print(cm)
+```
+
+
+
+Model 3: Random Forest Model
+---
+
+A  simple model built with random forest. To train repeated cross validation is defined. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+rfFit <- train(classe ~ ., data = inTrain[,-nzv], method = "rf", preProc = c("center", "scale","knnImpute"),trControl=ctrl)
+print(rfFit)
+
+plot(rfFit$finalModel)
+
+rfClasses <- predict(rfFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = rfClasses, inTest$classe)
+info<-cm$overall
+info$Method="Random Forest"
+methodStats<-rbind(methodStats,info)
+print(cm)
+
+```
+
+Model 4:  Boosted Model
+---
+
+A  simple model built with Boosted Model. To train repeated cross validation is defined. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+#boost.grid <- expand.grid(mstop=100, prune="yes")
+boostFit <- train(classe ~ ., data = inTrain[,-nzv], method = "gbm", preProc = c("center", "scale","knnImpute"),trControl=ctrl)
+print(boostFit)
+
+plot(boostFit$finalModel)
+
+boostClasses <- predict(boostFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = boostClasses, inTest$classe)
+info<-cm$overall
+info$Method="Generalized Boosted"
+methodStats<-rbind(methodStats,info)
+print(cm)
+```
+
+Model 5: Naive Bayes Model
+---
+
+A  simple model built with Naive Bayes. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+nbFit <- train(classe ~ ., data = inTrain[,-nzv], method = "nb", preProc = c("center", "scale","knnImpute"))
+print(nbFit)
+
+plot(nbFit)
+
+nbClasses <- predict(nbFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = nbClasses, inTest$classe)
+info<-cm$overall
+info$Method="Naive Bayes"
+methodStats<-rbind(methodStats,info)
+print(cm)
+```
+
+Model 6: Linear Discriminant Analysis
+---
+
+A  simple model built with Linear Discriminant Analysis. Data is preprocessed remove non zero variance variables, centered, scaled an inputed to NA values.
+
+```{r}
+ldaFit <- train(classe ~ ., data = inTrain[,-nzv], method = "lda", preProc = c("center", "scale","knnImpute"))
+ldaFit
+
+plot(ldaFit)
+
+ldaClasses <- predict(ldaFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = ldaClasses, inTest$classe)
+info<-cm$overall
+info$Method="Linear Discriminant Analysis"
+methodStats<-rbind(methodStats,info)
+print(cm)
+
+```
+
+
+Model 1: Partial Least Squares
+---
+
+We split the data in train, testing and validating data
+
+```{r}
+ctrl <- trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
+plsFit <- train(classe ~ ., data = inTrain[,-nzv], trainControl=ctrl, tuneLength = 15,method = "pls", preProc = c("center", "scale","knnImpute"))
+plsFit
+plot(plsFit)
+
+plsClasses <- predict(plsFit, newdata = inTest,na.action=na.pass)
+cm<-confusionMatrix(data = plsClasses, inTest$classe)
+info<-cm$overall
+info$Method="Partial Least Squares"
+methodStats<-rbind(methodStats,info)
+print(cm)
+```
+
+```{r, echo=FALSE}
+plot(cars)
+methodStats
+```
+
